@@ -1,0 +1,38 @@
+#!/bin/bash
+
+PROGFILE=$1
+DIR=$(pwd)
+
+if [[ ! $PROGFILE ]]; then
+    echo "Usage: $0 <progfile>" 1>&2
+    exit 1
+fi
+
+passed=0
+good_count=$(ls good/ | wc -l)
+bad_count=$(ls bad/ | wc -l)
+total=$((good_count + bad_count))
+
+for file in good/*; do
+    echo -n "TESTING good/$(basename "$file")..."
+    $PROGFILE $file >/dev/null
+    if [[ $? -eq 0 ]]; then
+        echo " PASSED"
+        passed=$((passed + 1))
+    else
+        echo " FAILED"
+    fi
+done
+
+for file in bad/*; do
+    echo -n "TESTING bad/$(basename "$file")..."
+    $PROGFILE $file >/dev/null
+    if [[ $? -eq 0 ]]; then
+        echo " FAILED"
+    else
+        echo " PASSED"
+        passed=$((passed + 1))
+    fi
+done
+
+echo "TOTAL: $passed / $total"
