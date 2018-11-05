@@ -38,17 +38,17 @@ insertIdsIntoContext ty ctx ident = if ( Map.notMember ident ctx )
 
 -- Instrucciones
 
-checkStms :: CxtVar -> CxtFun -> Type -> [Stm] -> Err CxtVar CxtFun
-checkStms cvar cfun ty [] = return cvar cfun
-checkStms cvar cfun ty (x : xs) = do {
-                                t <- checkStm cvar cfun ty x;
-								checkStms cvar cfun ty xs
+checkStms :: CxtVar -> CxtFun -> [Stm] -> Type -> Err Stm
+checkStms cvar cfun [] ty = return cvar cfun
+checkStms (x : xs) ty = do {
+                                x <- checkStm x ty;
+								checkStms xs ty
                            }
 
-checkStm :: CxtVar -> CxtFun -> Type -> Stm -> Err CxtVar CxtFun
-checkStm cvar cfun ty (SAss ident e) = 
+checkStm :: Stm -> Type -> Err Stm
+checkStm stms ty = 
 
-/*
+
     = SAss Ident Exp
     | SCall Ident [Exp]
     | SCallEmpty Ident
@@ -58,8 +58,8 @@ checkStm cvar cfun ty (SAss ident e) =
     | SFor Ident Exp Exp Stm
     | SIf Exp Stm Stm
     | SEmpty
-*/
-
+	
+	
 
 --Contexto Ambiente
 typeChecker :: CxtVar -> CxtFun -> Exp -> Type -> Err ()
