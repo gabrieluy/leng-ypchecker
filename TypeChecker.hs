@@ -10,6 +10,8 @@ module TypeChecker where
     
     -- ESTRUCTURAS DE DATOS
     
+    type CxtVar = Map Ident Type
+    type CxtFun = Map Ident ([(Bool, Type)], Maybe Type)
     
     -- MAIN
     typeCheck :: Program -> Err ()
@@ -19,6 +21,7 @@ module TypeChecker where
     checkProgram :: Program -> Err ()
     checkProgram (PBlock name varPart procFuns stms) = do  
         varCtx <- crearVarContext varPart
+        funProCtx <- crearFunContext procFuns
         return ()
     
     -- map checkstm con la lista de stms
@@ -28,13 +31,30 @@ module TypeChecker where
     crearVarContext (VPart vars) = foldM convertirVar Map.empty vars
     
     convertirVar :: CxtVar -> VarDecl -> Err CxtVar
-    convertirVar ctx (VDecl idents ty) = foldM (insertIdsIntoContext ty) ctx idents
+    convertirVar ctx (VDecl idents ty) = foldM (insertVarIdsIntoContext ty) ctx idents
     
-    insertIdsIntoContext :: Type -> CxtVar -> Ident -> Err CxtVar
-    insertIdsIntoContext ty ctx ident = if ( Map.notMember ident ctx ) 
-                                            then return (Map.insert ident ty ctx) 
-                                        else
-                                            fail ("La variable ya esta declarada")
+    insertVarIdsIntoContext :: Type -> CxtVar -> Ident -> Err CxtVar
+    insertVarIdsIntoContext ty ctx ident = if ( Map.notMember ident ctx ) 
+                                              then return (Map.insert ident ty ctx) 
+                                           else
+                                              fail ("La variable ya esta declarada")
+
+    crearFunContext ::  [Def] -> Err CxtFun
+    crearFunContext defs = foldM convertirFun Map.empty defs
+
+    convertirFun :: CxtFun -> Def -> Err CxtFun
+    convertirFun ctx (DProc ident params varPart stms) = insertDefIdsIntoContext Nothing (map armarParametros params) ctx ident
+    convertirFun ctx (DFun ident params ty varPart stms) = insertDefIdsIntoContext (Just ty) (map armarParametros params) ctx ident
+
+    armarParametros :: Param -> (Bool, Type)
+    armarParametros (ParamSingle idents ty) = (False, ty)
+    armarParametros (ParamRef idents ty) = (True, ty)                                
+
+    insertDefIdsIntoContext :: Maybe Type -> [(Bool, Type)] -> CxtFun -> Ident -> Err CxtFun
+    insertDefIdsIntoContext ty params ctx ident = if ( Map.notMember ident ctx ) 
+                                                      then return (Map.insert ident (params, ty) ctx) 
+                                                  else
+                                                      fail ("La funcion o proc " ++ show ident ++" ya esta declarada/o")
     
     --Contexto Ambiente
     typeChecker :: CxtVar -> CxtFun -> Exp -> Type -> Err ()
@@ -45,9 +65,6 @@ module TypeChecker where
         else
             fail ("Los tipos " ++ (show t) ++ " y " ++ (show t2) ++ " no coinciden ")
     
-    type CxtVar = Map Ident Type
-    type CxtFun = Map Ident ([(Bool, Type)], Maybe Type)
-    
     typeInference :: CxtVar -> CxtFun -> Exp -> Err Type
     typeInference cvar cfun (EEq e1 e2)    = checkCompare cvar cfun e1 e2
     typeInference cvar cfun (EDiff e1 e2)  = checkCompare cvar cfun e1 e2 
@@ -57,7 +74,7 @@ module TypeChecker where
     typeInference cvar cfun (EGe e1 e2)    = checkCompare cvar cfun e1 e2
     typeInference cvar cfun (EPlus e1 e2)  = checkExpAritmetica cvar cfun e1 e2
     typeInference cvar cfun (ESubst e1 e2) = checkExpAritmetica cvar cfun e1 e2
-    typeInference cvar cfun (EOr e1 e2)    =  checkExpBooleana cvar cfun e1 e2
+    typeInference cvar cfun (EOr e1 e2)    = checkExpBooleana cvar cfun e1 e2
     typeInference cvar cfun (EMul e1 e2)   = checkExpAritmetica cvar cfun e1 e2
     typeInference cvar cfun (EDiv e1 e2)   = checkExpAritmetica cvar cfun e1 e2
     typeInference cvar cfun (EAnd e1 e2)   = checkExpBooleana cvar cfun e1 e2
@@ -65,8 +82,8 @@ module TypeChecker where
     typeInference cvar cfun (EDiv2 e1 e2)  = checkDivMod cvar cfun e1 e2
     typeInference cvar cfun (ECall i es)   = case Map.lookup i cfun of
                                                 Just (p:params, Just t) -> do 
-                                                        esListParamCompatibles cvar cfun (p:params) es
-                                                        return t
+                                                    esListParamCompatibles cvar cfun (p:params) es
+                                                    return t
                                                 Just (_, Nothing) -> fail "Se esta llamando a un procedimiento"
                                                 Just ([], Just t) -> fail "La funcion debe contener parametros"
                                                 Nothing -> fail "Funcion no declarada"
