@@ -21,6 +21,7 @@ module TypeChecker where
     
     crearVarContext :: VarPart -> Err CxtVar
     crearVarContext (VPart vars) = foldM convertirVar Map.empty vars
+    crearVarContext (VPartEmpty) = foldM convertirVar Map.empty []
     
     convertirVar :: CxtVar -> VarDecl -> Err CxtVar
     convertirVar ctx (VDecl idents ty) = foldM (insertVarIdsIntoContext ty) ctx idents
