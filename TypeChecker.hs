@@ -14,18 +14,10 @@ module TypeChecker where
     type CxtFun = Map Ident ([(Bool, Type)], Maybe Type)
     
     -- MAIN
+
+    -- Crear contextos
     typeCheck :: Program -> Err ()
     typeCheck program = checkProgram program
-    
-    -- CHECK Program
-    checkProgram :: Program -> Err ()
-    checkProgram (PBlock name varPart procFuns stms) = do  
-        varCtx <- crearVarContext varPart
-        funProCtx <- crearFunContext procFuns
-        return ()
-    
-    -- map checkstm con la lista de stms
-    -- primero insertar las finciones en el contexto y despues checkear los stm dentro de las funciones 
     
     crearVarContext :: VarPart -> Err CxtVar
     crearVarContext (VPart vars) = foldM convertirVar Map.empty vars
@@ -37,7 +29,7 @@ module TypeChecker where
     insertVarIdsIntoContext ty ctx ident = if ( Map.notMember ident ctx ) 
                                               then return (Map.insert ident ty ctx) 
                                            else
-                                              fail ("La variable ya esta declarada")
+                                              fail ("La variable " ++ show ident ++ " ya esta declarada")
 
     crearFunContext ::  [Def] -> Err CxtFun
     crearFunContext defs = foldM convertirFun Map.empty defs
@@ -56,6 +48,74 @@ module TypeChecker where
                                                   else
                                                       fail ("La funcion o proc " ++ show ident ++" ya esta declarada/o")
     
+    -- CHECK Program
+    checkProgram :: Program -> Err ()
+    checkProgram (PBlock name varPart procFuns stms) = do  
+        varCtx <- crearVarContext varPart
+        funCtx <- crearFunContext procFuns
+        checkFunStms varCtx funCtx procFuns
+        checkStms varCtx funCtx stms
+
+    checkFunStms :: CxtVar -> CxtFun -> [Def] -> Err ()
+    checkFunStms cvar cfun []  = return ()
+    checkFunStms cvar cfun (x:xs) = do 
+                                e <- checkFunStm cvar cfun x;
+                                checkFunStms cvar cfun xs
+
+    checkFunStm :: CxtVar -> CxtFun -> Def -> Err ()
+    checkFunStm cvar cfun (DProc ident params varPart stms)  = checkStms cvar cfun stms
+    checkFunStm cvar cfun (DFun ident params ty varPart stms)  = checkStms cvar cfun stms
+
+    checkStms :: CxtVar -> CxtFun -> [Stm] -> Err ()
+    checkStms cvar cfun []  = return ()
+    checkStms cvar cfun (x:xs) = do 
+                            e <- checkStm cvar cfun x;
+                            checkStms cvar cfun xs
+							  						  
+    checkStm :: CxtVar -> CxtFun -> Stm -> Err ()
+    checkStm cvar cfun (SAss ident exp)   = case Map.lookup ident cvar of
+                                                Just t -> do
+                                                    tExp <- typeInference cvar cfun exp
+                                                    if (sonTiposCompatibles t tExp)
+                                                        then return ()
+                                                    else fail "Los tipos a asignar no son comparables"
+                                                Nothing -> fail "No se puede asignar la variable no declarada"
+
+    checkStm cvar cfun (SCall ident exps) = case Map.lookup ident cfun of
+                                                Just (p:params, Nothing) -> do 
+                                                    esListParamCompatibles cvar cfun (p:params) exps
+                                                    return ()
+                                                Just (_, Just t) -> fail ("Se esta llamando a una funcion")
+                                                Just ([], Nothing) -> fail ("El procedimiento " ++ show ident ++ " debe contener parametros")
+                                                Nothing -> fail ("Procedimiento " ++ show ident ++ " no declarado")
+
+    checkStm cvar cfun (SCallEmpty ident) = case Map.lookup ident cfun of
+                                                Just p -> return ()
+                                                Nothing -> fail ("Procedimiento " ++ show ident ++ " no declarado")
+    
+    checkStm cvar cfun (SRepeat stm exp)  =  do
+                                                typeChecker cvar cfun exp Type_bool
+                                                checkStm cvar cfun stm
+    checkStm cvar cfun (SWhile exp stm)   =  do
+                                                typeChecker cvar cfun exp Type_bool
+                                                checkStm cvar cfun stm
+
+    checkStm cvar cfun (SBlock stms)      =  do
+                                                checkStms cvar cfun stms
+
+    checkStm cvar cfun (SFor ident exp1 exp2 stm) = case Map.lookup ident cvar of
+                                                        Just Type_integer -> do
+                                                            typeChecker cvar cfun exp1 Type_integer
+                                                            typeChecker cvar cfun exp2 Type_integer
+                                                            checkStm cvar cfun stm
+                                                        Nothing -> fail "La variable del for no es int"
+
+    checkStm cvar cfun (SIf exp stm1 stm2) = do
+                                                typeChecker cvar cfun exp Type_bool
+                                                checkStm cvar cfun stm1
+                                                checkStm cvar cfun stm2
+    checkStm cvar cfun (SEmpty) = return ()
+
     --Contexto Ambiente
     typeChecker :: CxtVar -> CxtFun -> Exp -> Type -> Err ()
     typeChecker cVar cFun e t = do
@@ -84,14 +144,14 @@ module TypeChecker where
                                                 Just (p:params, Just t) -> do 
                                                     esListParamCompatibles cvar cfun (p:params) es
                                                     return t
-                                                Just (_, Nothing) -> fail "Se esta llamando a un procedimiento"
-                                                Just ([], Just t) -> fail "La funcion debe contener parametros"
-                                                Nothing -> fail "Funcion no declarada"
+                                                Just (_, Nothing) -> fail ("Se esta llamando a un procedimiento")
+                                                Just ([], Just t) -> fail ("La funcion " ++ show i ++ " debe contener parametros")
+                                                Nothing -> fail ("Funcion " ++ show i ++ " no declarada")
     typeInference cvar cfun (ECallEmpty i) = case Map.lookup i cfun of
                                                 Just ([], Just t) -> return t
-                                                Just (_, Nothing) -> fail "Se esta llamando a un procedimiento"
-                                                Just (p:params, Just t) -> fail "La funcion no puede contener parametros"
-                                                Nothing -> fail "Funcion no declarada"
+                                                Just (_, Nothing) -> (fail "Se esta llamando a un procedimiento")
+                                                Just (p:params, Just t) -> fail ("La funcion " ++ show i ++ " no puede contener parametros")
+                                                Nothing -> fail ("Funcion " ++ show i ++ " no declarada")
     typeInference cvar cfun (EStr x)       = return Type_string
     typeInference cvar cfun (EInt x)       = return Type_integer
     typeInference cvar cfun (EReal x)      = return Type_real
@@ -100,7 +160,7 @@ module TypeChecker where
     typeInference cvar cfun (EFalse)       = return Type_bool
     typeInference cvar cfun (EIdent i)     = case Map.lookup i cvar of
                                                 Just t -> return t
-                                                Nothing -> fail "Variable no declarada"
+                                                Nothing -> fail ("Variable " ++ show i ++ " no declarada")
     typeInference cvar cfun (ENot e)       = typeInference cvar cfun e
     typeInference cvar cfun (ENegNum e)    = typeInference cvar cfun e
     typeInference cvar cfun (EPlusNum e)   = typeInference cvar cfun e
