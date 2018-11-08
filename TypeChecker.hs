@@ -19,40 +19,53 @@ module TypeChecker where
     typeCheck :: Program -> Err ()
     typeCheck program = checkProgram program
     
-    crearVarContext :: VarPart -> Err CxtVar
-    crearVarContext (VPart vars) = foldM convertirVar Map.empty vars
-    crearVarContext (VPartEmpty) = foldM convertirVar Map.empty []
+    addVarsCtx :: VarPart -> CxtVar -> Err CxtVar
+    addVarsCtx (VPart vars) ctx = foldM convertAddVar ctx vars
+    addVarsCtx (VPartEmpty) ctx = foldM convertAddVar ctx []
     
-    convertirVar :: CxtVar -> VarDecl -> Err CxtVar
-    convertirVar ctx (VDecl idents ty) = foldM (insertVarIdsIntoContext ty) ctx idents
-    
-    insertVarIdsIntoContext :: Type -> CxtVar -> Ident -> Err CxtVar
-    insertVarIdsIntoContext ty ctx ident = if ( Map.notMember ident ctx ) 
-                                              then return (Map.insert ident ty ctx) 
-                                           else
-                                              fail ("La variable " ++ show ident ++ " ya esta declarada")
+    convertAddVar :: CxtVar -> VarDecl -> Err CxtVar
+    convertAddVar ctx (VDecl idents ty) = foldM (addIdentCtx ty) ctx idents
 
+    addParamsCtx :: [Param] -> CxtVar -> Err CxtVar
+    addParamsCtx params ctx = foldM convertirParam ctx params
+    
+    convertirParam :: CxtVar -> Param -> Err CxtVar
+    convertirParam ctx (ParamSingle idents ty) = foldM (addIdentCtx ty) ctx idents
+    convertirParam ctx (ParamRef idents ty) = foldM (addIdentCtx ty) ctx idents
+
+    remplaceIdentCtx :: Type -> CxtVar -> Ident -> Err CxtVar
+    remplaceIdentCtx ty ctx ident = return (Map.insert ident ty ctx) 
+
+    addIdentCtx :: Type -> CxtVar -> Ident -> Err CxtVar
+    addIdentCtx ty ctx ident = if ( Map.notMember ident ctx ) 
+                                then return (Map.insert ident ty ctx) 
+                               else
+                                 fail ("La variable " ++ show ident ++ " ya esta declarada")
+                                 
     crearFunContext ::  [Def] -> Err CxtFun
     crearFunContext defs = foldM convertirFun Map.empty defs
 
     convertirFun :: CxtFun -> Def -> Err CxtFun
-    convertirFun ctx (DProc ident params varPart stms) = insertDefIdsIntoContext Nothing (map armarParametros params) ctx ident
-    convertirFun ctx (DFun ident params ty varPart stms) = insertDefIdsIntoContext (Just ty) (map armarParametros params) ctx ident
+    convertirFun ctx (DProc ident params varPart stms) = addDefIdsCtx Nothing (concat (map formatParam params)) ctx ident
+    convertirFun ctx (DFun ident params ty varPart stms) = addDefIdsCtx (Just ty) (concat (map formatParam params)) ctx ident
 
-    armarParametros :: Param -> (Bool, Type)
-    armarParametros (ParamSingle idents ty) = (False, ty)
-    armarParametros (ParamRef idents ty) = (True, ty)                                
+    formatParam :: Param -> [(Bool, Type)]
+    formatParam (ParamSingle idents ty) = map (\ident -> formatParamId ty False) idents
+    formatParam (ParamRef idents ty) = map (\ident -> formatParamId ty True) idents 
+    
+    formatParamId :: Type -> Bool -> (Bool, Type)
+    formatParamId ty bool = (bool, ty)
 
-    insertDefIdsIntoContext :: Maybe Type -> [(Bool, Type)] -> CxtFun -> Ident -> Err CxtFun
-    insertDefIdsIntoContext ty params ctx ident = if ( Map.notMember ident ctx ) 
-                                                      then return (Map.insert ident (params, ty) ctx) 
-                                                  else
-                                                      fail ("La funcion o proc " ++ show ident ++" ya esta declarada/o")
+    addDefIdsCtx :: Maybe Type -> [(Bool, Type)] -> CxtFun -> Ident -> Err CxtFun
+    addDefIdsCtx ty params ctx ident =  if ( Map.notMember ident ctx ) 
+                                            then return (Map.insert ident (params, ty) ctx) 
+                                        else
+                                            fail ("La funcion o proc " ++ show ident ++" ya esta declarada/o")
     
     -- CHECK Program
     checkProgram :: Program -> Err ()
     checkProgram (PBlock name varPart procFuns stms) = do  
-        varCtx <- crearVarContext varPart
+        varCtx <- addVarsCtx varPart Map.empty
         funCtx <- crearFunContext procFuns
         checkFunStms varCtx funCtx procFuns
         checkStms varCtx funCtx stms
@@ -60,24 +73,31 @@ module TypeChecker where
     checkFunStms :: CxtVar -> CxtFun -> [Def] -> Err ()
     checkFunStms cvar cfun []  = return ()
     checkFunStms cvar cfun (x:xs) = do 
-                                e <- checkFunStm cvar cfun x;
+                                checkFunStm cvar cfun x;
                                 checkFunStms cvar cfun xs
 
     checkFunStm :: CxtVar -> CxtFun -> Def -> Err ()
-    checkFunStm cvar cfun (DProc ident params varPart stms)  = checkStms cvar cfun stms
-    checkFunStm cvar cfun (DFun ident params ty varPart stms)  = checkStms cvar cfun stms
+    checkFunStm cvar cfun (DProc ident params varPart stms)   =  do
+                                                                   pCtxP <- addParamsCtx params Map.empty
+                                                                   pCtxPV <- addVarsCtx varPart pCtxP
+                                                                   
+                                                                   checkStms (Map.union pCtxPV cvar) cfun stms
+    checkFunStm cvar cfun (DFun ident params ty varPart stms) =  do
+                                                                   fCtxP <- addParamsCtx params (Map.insert ident ty Map.empty)
+                                                                   fCtxPV <- addVarsCtx varPart fCtxP 
+                                                                   checkStms (Map.union fCtxPV cvar) cfun stms
 
     checkStms :: CxtVar -> CxtFun -> [Stm] -> Err ()
     checkStms cvar cfun []  = return ()
     checkStms cvar cfun (x:xs) = do 
-                            e <- checkStm cvar cfun x;
+                            checkStm cvar cfun x;
                             checkStms cvar cfun xs
 							  						  
     checkStm :: CxtVar -> CxtFun -> Stm -> Err ()
     checkStm cvar cfun (SAss ident exp)   = case Map.lookup ident cvar of
                                                 Just t -> do
                                                     tExp <- typeInference cvar cfun exp
-                                                    if (sonTiposCompatibles t tExp)
+                                                    if (tiposCompatiblesAss t tExp)
                                                         then return ()
                                                     else fail "Los tipos a asignar no son comparables"
                                                 Nothing -> fail "No se puede asignar la variable no declarada"
@@ -168,6 +188,9 @@ module TypeChecker where
     
     
     esListParamCompatibles :: CxtVar -> CxtFun -> [(Bool, Type)] -> [Exp] -> Err ()
+    esListParamCompatibles cvar cfun [] [y] = fail ("Cantidad de parametros incorrecta")
+    esListParamCompatibles cvar cfun [x] [] = fail ("Cantidad de parametros incorrecta")
+    esListParamCompatibles cvar cfun [x] [y] = esParamCompatible cvar cfun x y
     esListParamCompatibles cvar cfun (x:xp) (y:ye) = do
                                         esParamCompatible cvar cfun x y 
                                         esListParamCompatibles cvar cfun xp ye
@@ -175,7 +198,7 @@ module TypeChecker where
     esParamCompatible :: CxtVar -> CxtFun -> (Bool, Type) -> Exp -> Err ()
     esParamCompatible cvar cfun (ref, t1) e = do 
             t2 <- typeInference cvar cfun e
-            if sonTiposCompatibles t1 t2
+            if tiposCompatibles t1 t2
                 then if ref 
                         then esVariable e
                      else return ()
@@ -214,7 +237,7 @@ module TypeChecker where
     checkCompare cvar cfun e1 e2 = do 
         t1 <- typeInference cvar cfun e1
         t2 <- typeInference cvar cfun e2
-        if sonTiposCompatibles t1 t2
+        if tiposCompatibles t1 t2
             then return Type_bool
         else fail "Los tipos no son comparables"
     
@@ -236,9 +259,15 @@ module TypeChecker where
     sonTipoBoolCharStr :: Type -> Type -> Bool
     sonTipoBoolCharStr t1 t2 = sonTipoBool t1 t2 || sonTipoChar t1 t2 || sonTipoStr t1 t2
     
-    sonTiposCompatibles :: Type -> Type -> Bool
-    sonTiposCompatibles t1 t2 = sonTipoNumerico t1 t2 || sonTipoBoolCharStr t1 t2
+    tiposCompatibles :: Type -> Type -> Bool
+    tiposCompatibles t1 t2 = sonTipoNumerico t1 t2 || sonTipoBoolCharStr t1 t2
+
+    tiposCompatiblesAss :: Type -> Type -> Bool
+    tiposCompatiblesAss t1 t2 = sonNumericosPrecedencia t1 t2 || sonTipoBoolCharStr t1 t2
     
+    sonNumericosPrecedencia :: Type -> Type -> Bool
+    sonNumericosPrecedencia t1 t2 = ((t1 == Type_integer && t2 == Type_integer) || (t1 == Type_real && isTipoNumerico t2))
+
     run_test_exp_var :: Err ()
     run_test_exp_var = typeChecker (Map.insert (Ident "x") Type_char Map.empty) Map.empty (EIdent (Ident "x")) Type_char
     
