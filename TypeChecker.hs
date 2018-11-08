@@ -33,7 +33,7 @@ addParamsCtx params ctx = foldM convertirParam ctx params
 
 convertirParam :: CxtVar -> Param -> Err CxtVar
 convertirParam ctx (ParamSingle idents ty) = foldM (addIdentCtx ty) ctx idents
-convertirParam ctx (ParamRef idents ty) = foldM (addIdentCtx ty) ctx idents
+convertirParam ctx (ParamRef idents ty)    = foldM (addIdentCtx ty) ctx idents
 
 remplaceIdentCtx :: Type -> CxtVar -> Ident -> Err CxtVar
 remplaceIdentCtx ty ctx ident = return (Map.insert ident ty ctx) 
@@ -48,12 +48,12 @@ crearFunContext ::  [Def] -> Err CxtFun
 crearFunContext defs = foldM convertirFun Map.empty defs
 
 convertirFun :: CxtFun -> Def -> Err CxtFun
-convertirFun ctx (DProc ident params varPart stms) = addDefIdsCtx Nothing (concat (map formatParam params)) ctx ident
+convertirFun ctx (DProc ident params varPart stms)   = addDefIdsCtx Nothing (concat (map formatParam params)) ctx ident
 convertirFun ctx (DFun ident params ty varPart stms) = addDefIdsCtx (Just ty) (concat (map formatParam params)) ctx ident
 
 formatParam :: Param -> [(Bool, Type)]
 formatParam (ParamSingle idents ty) = map (\ident -> formatParamId ty False) idents
-formatParam (ParamRef idents ty) = map (\ident -> formatParamId ty True) idents 
+formatParam (ParamRef idents ty)    = map (\ident -> formatParamId ty True) idents 
 
 formatParamId :: Type -> Bool -> (Bool, Type)
 formatParamId ty bool = (bool, ty)
@@ -197,8 +197,8 @@ typeInference cvar cfun (EPlusNum e)   = typeInference cvar cfun e
 
 
 esListParamCompatibles :: CxtVar -> CxtFun -> [(Bool, Type)] -> [Exp] -> Err ()
-esListParamCompatibles cvar cfun [] [y] = fail ("Cantidad de parametros incorrecta")
-esListParamCompatibles cvar cfun [x] [] = fail ("Cantidad de parametros incorrecta")
+esListParamCompatibles cvar cfun [] [y]  = fail ("Cantidad de parametros incorrecta")
+esListParamCompatibles cvar cfun [x] []  = fail ("Cantidad de parametros incorrecta")
 esListParamCompatibles cvar cfun [x] [y] = esParamCompatible cvar cfun x y
 esListParamCompatibles cvar cfun (x:xp) (y:ye) = do
                                                    esParamCompatible cvar cfun x y 

@@ -197,8 +197,8 @@ typeInference cvar cfun (EPlusNum e)   = typeInference cvar cfun e
 
 
 esListParamCompatibles :: CxtVar -> CxtFun -> [(Bool, Type)] -> [Exp] -> Err ()
-esListParamCompatibles cvar cfun [] [y] = fail ("Cantidad de parametros incorrecta")
-esListParamCompatibles cvar cfun [x] [] = fail ("Cantidad de parametros incorrecta")
+esListParamCompatibles cvar cfun [] [y]  = fail ("Cantidad de parametros incorrecta")
+esListParamCompatibles cvar cfun [x] []  = fail ("Cantidad de parametros incorrecta")
 esListParamCompatibles cvar cfun [x] [y] = esParamCompatible cvar cfun x y
 esListParamCompatibles cvar cfun (x:xp) (y:ye) = do
                                                    esParamCompatible cvar cfun x y 
@@ -230,28 +230,28 @@ checkDivMod :: CxtVar -> CxtFun -> Exp -> Exp -> Err Type
 checkDivMod cvar cfun e1 e2 = do
                                 t1 <- typeInference cvar cfun e1
                                 t2 <- typeInference cvar cfun e2
-	if t1 == Type_integer && t2 == Type_integer
-		then return Type_integer
-	else fail "Alguno de los tipos no es integer"
+                                if t1 == Type_integer && t2 == Type_integer then
+                                   return Type_integer
+                                else fail "Alguno de los tipos no es integer"
 
 checkExpBooleana :: CxtVar -> CxtFun -> Exp -> Exp -> Err Type
-checkExpBooleana cvar cfun e1 e2 = do 
-	t1 <- typeInference cvar cfun e1
-	t2 <- typeInference cvar cfun e2
-	if sonTipoBool t1 t2
-		then return Type_bool
-	else fail "Alguno de los tipos no es booleano"
+checkExpBooleana cvar cfun e1 e2 = do
+                                     t1 <- typeInference cvar cfun e1
+                                     t2 <- typeInference cvar cfun e2
+                                     if sonTipoBool t1 t2 then
+                                        return Type_bool
+                                     else fail "Alguno de los tipos no es booleano"
 
 checkCompare :: CxtVar -> CxtFun -> Exp -> Exp -> Err Type
-checkCompare cvar cfun e1 e2 = do 
-	t1 <- typeInference cvar cfun e1
-	t2 <- typeInference cvar cfun e2
-	if tiposCompatibles t1 t2
-		then return Type_bool
-	else fail "Los tipos no son comparables"
+checkCompare cvar cfun e1 e2 = do
+                                 t1 <- typeInference cvar cfun e1
+                                 t2 <- typeInference cvar cfun e2
+                                 if tiposCompatibles t1 t2 then
+                                    return Type_bool
+                                 else fail "Los tipos no son comparables"
 
 isTipoNumerico :: Type -> Bool
-isTipoNumerico  t = (t == Type_real || t == Type_integer)
+isTipoNumerico t = (t == Type_real || t == Type_integer)
 
 sonTipoNumerico :: Type -> Type -> Bool
 sonTipoNumerico t1 t2 = isTipoNumerico t1 && isTipoNumerico t2
